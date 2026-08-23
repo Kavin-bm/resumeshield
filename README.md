@@ -124,7 +124,15 @@ automated screening** — measured, not guessed.
 This is the backstop for the entire design. It catches attacks nobody has
 enumerated, because it measures effect rather than method.
 
-*(Requires an API key. Without one, the scan still runs and this layer
+Provider-agnostic — calls route through LiteLLM, so Anthropic, OpenAI,
+Gemini, Groq, Mistral, and Together all work by setting the matching key.
+Local models via Ollama need no key at all:
+
+```bash
+RESUMESHIELD_SCREENER_MODEL=ollama/llama3.2
+```
+
+*(Without any provider configured, the scan still runs and this layer
 reports itself unavailable.)*
 
 ---
@@ -222,11 +230,20 @@ cd frontend && npm run dev
 ```
 
 Open the app, and click any bundled sample — no file needed to see it
-work. Optionally add an API key to `.env` to enable differential
-screening:
+work.
+
+Differential screening (layer 5) is optional. Set **any one** provider
+key in `.env` to enable it — first one found wins:
 
 ```bash
-ANTHROPIC_API_KEY=sk-...
+ANTHROPIC_API_KEY=...     # or OPENAI_API_KEY, GEMINI_API_KEY,
+                          # GROQ_API_KEY, MISTRAL_API_KEY, TOGETHERAI_API_KEY
+```
+
+Or point it at a local model and use no key at all:
+
+```bash
+RESUMESHIELD_SCREENER_MODEL=ollama/llama3.2
 ```
 
 ```bash
@@ -247,8 +264,8 @@ the duration of the request and is never written to disk.
 
 ## Stack
 
-Python 3.14 · FastAPI · PyMuPDF · pypdf · pdfminer.six · LiteLLM ·
-Next.js 16 · TypeScript · Tailwind v4
+Python 3.14 · FastAPI · PyMuPDF · pypdf · pdfminer.six · LiteLLM
+(provider-agnostic) · Next.js 16 · TypeScript · Tailwind v4
 
 ## Limits, stated plainly
 
@@ -259,7 +276,8 @@ Next.js 16 · TypeScript · Tailwind v4
   system Tesseract dependency; it's the next thing to build.
 - **The corpus is synthetic.** Numbers above describe generated samples
   with known ground truth, not resumes found in the wild.
-- **Layer 5 costs money and latency.** It's opt-in for that reason.
+- **Layer 5 costs money and latency.** It's opt-in for that reason —
+  though pointing it at a local Ollama model makes it free.
 
 ## On the attack generator
 

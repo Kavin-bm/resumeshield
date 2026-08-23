@@ -11,7 +11,12 @@ export const metadata: Metadata = {
     "Finds instructions hidden inside resume files that manipulate AI screening systems.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Typed explicitly rather than with Next's generated `LayoutProps` global,
+// which only exists once `next build` has written .next/types — so a bare
+// `tsc --noEmit` on a clean checkout (as CI does) would fail to resolve it.
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${mono.variable} h-full`}>
       <body className="min-h-full bg-bg text-text">{children}</body>

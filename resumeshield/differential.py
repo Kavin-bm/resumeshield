@@ -42,6 +42,8 @@ Respond with ONLY a JSON object, no other text:
 class DifferentialResult:
     available: bool = False
     note: str = ""
+    provider: str | None = None
+    model: str | None = None
     raw_score: int | None = None
     sanitized_score: int | None = None
     delta: int | None = None
@@ -53,12 +55,51 @@ class DifferentialResult:
         return asdict(self)
 
 
+# Provider auto-detection, in preference order: (env var, LiteLLM model id).
+# Calls go through LiteLLM, so the provider only affects which model string
+# and key to use — nothing downstream changes. Anything LiteLLM supports
+# works by setting RESUMESHIELD_SCREENER_MODEL explicitly, including local
+# models via Ollama, which need no key at all.
+PROVIDERS: list[tuple[str, str]] = [
+    ("ANTHROPIC_API_KEY", "claude-haiku-4-5-20251001"),
+    ("OPENAI_API_KEY", "gpt-4o-mini"),
+    ("GEMINI_API_KEY", "gemini/gemini-2.0-flash"),
+    ("GROQ_API_KEY", "groq/llama-3.3-70b-versatile"),
+    ("MISTRAL_API_KEY", "mistral/mistral-small-latest"),
+    ("TOGETHERAI_API_KEY", "together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+]
+
+
 def _model() -> str:
-    return os.environ.get("RESUMESHIELD_SCREENER_MODEL", "claude-haiku-4-5-20251001")
+    """An explicit model always wins; otherwise pick from whatever key is set."""
+    explicit = os.environ.get("RESUMESHIELD_SCREENER_MODEL")
+    if explicit:
+        return explicit
+    for env_var, model in PROVIDERS:
+        if os.environ.get(env_var):
+            return model
+    return PROVIDERS[0][1]
+
+
+def active_provider() -> str | None:
+    """Which provider will be used, for reporting. None if unconfigured."""
+    if os.environ.get("RESUMESHIELD_SCREENER_MODEL"):
+        return "explicit"
+    for env_var, _ in PROVIDERS:
+        if os.environ.get(env_var):
+            return env_var.removesuffix("_API_KEY").lower()
+    return None
 
 
 def has_credentials() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY"))
+    """True if any supported provider is configured.
+
+    An explicit model counts on its own — it may point at Ollama or a
+    local proxy, where there is no key to look for.
+    """
+    if os.environ.get("RESUMESHIELD_SCREENER_MODEL"):
+        return True
+    return any(os.environ.get(env_var) for env_var, _ in PROVIDERS)
 
 
 def _parse_screener_reply(raw: str) -> tuple[int | None, str, str]:
@@ -93,10 +134,14 @@ def _screen(text: str) -> tuple[int | None, str, str]:
 def run(raw_text: str, sanitized_text: str) -> DifferentialResult:
     """Screen both versions of the document and compare the outcomes."""
     if not has_credentials():
+        supported = ", ".join(env for env, _ in PROVIDERS)
         return DifferentialResult(
             available=False,
-            note="No API key configured — behavioural screening skipped. "
-                 "Static detection layers still ran.",
+            note=(
+                "No model provider configured — behavioural screening skipped, "
+                "static detection layers still ran. Set any of: "
+                f"{supported}, or RESUMESHIELD_SCREENER_MODEL for a local model."
+            ),
         )
 
     if not raw_text.strip() or not sanitized_text.strip():
@@ -138,6 +183,8 @@ def run(raw_text: str, sanitized_text: str) -> DifferentialResult:
     return DifferentialResult(
         available=True,
         note=note,
+        provider=active_provider(),
+        model=_model(),
         raw_score=raw_score,
         sanitized_score=clean_score,
         delta=delta,
