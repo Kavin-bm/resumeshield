@@ -85,6 +85,10 @@ class ScanResult:
     sanitized_text: str = ""
     pages: int = 0
     errors: list[str] = field(default_factory=list)
+    rendered_pages: list[dict] = field(default_factory=list)
+    # Per-library extraction, so a report can show which tool saw what.
+    extractor_texts: dict[str, str] = field(default_factory=dict)
+    differential: dict = field(default_factory=dict)
 
     @property
     def is_clean(self) -> bool:
@@ -101,4 +105,7 @@ class ScanResult:
             "hidden_text": self.hidden_text,
             "sanitized_text": self.sanitized_text,
             "errors": self.errors,
+            "rendered_pages": self.rendered_pages,
+            "extractor_texts": self.extractor_texts,
+            "differential": self.differential,
         }

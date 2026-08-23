@@ -58,6 +58,37 @@ class PoisonSample:
     is_poisoned: bool
 
 
+def _wrap(text: str, width: int = 72) -> list[str]:
+    """Split a payload into page-width lines.
+
+    Without this, a long payload runs past the right page edge and becomes
+    *accidentally* concealed — which would make a sample poisoned by a
+    technique it wasn't meant to test, and quietly invalidate any measured
+    result. Each sample must vary exactly one thing.
+    """
+    words, lines, current = text.split(), [], ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if len(candidate) > width:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _insert_payload(
+    page: pymupdf.Page, payload: str, y: float, *, fontsize: float = 9.0, **kwargs
+) -> None:
+    """Write a payload as wrapped lines starting at y."""
+    for offset, line in enumerate(_wrap(payload)):
+        page.insert_text(
+            (72, y + offset * (fontsize + 2)), line, fontsize=fontsize, fontname="helv", **kwargs
+        )
+
+
 def _write_body(page: pymupdf.Page, start_y: float = 72.0) -> float:
     y = start_y
     for line in CLEAN_RESUME_BODY:
@@ -103,7 +134,7 @@ def make_white_text(out_path: Path, payload: str = DEFAULT_PAYLOAD) -> PoisonSam
     """White text on the default white page — the classic version."""
     doc, page = _new_doc()
     y = _write_body(page)
-    page.insert_text((72, y + 20), payload, fontsize=9, fontname="helv", color=(1, 1, 1))
+    _insert_payload(page, payload, y + 20, color=(1, 1, 1))
     doc.save(out_path)
     doc.close()
     return PoisonSample(out_path, "white_text", payload, is_poisoned=True)
@@ -113,7 +144,7 @@ def make_tiny_font(out_path: Path, payload: str = DEFAULT_PAYLOAD) -> PoisonSamp
     """Sub-point font: technically visible, unreadable in practice."""
     doc, page = _new_doc()
     y = _write_body(page)
-    page.insert_text((72, y + 20), payload, fontsize=1, fontname="helv", color=(0, 0, 0))
+    _insert_payload(page, payload, y + 20, fontsize=1, color=(0, 0, 0))
     doc.save(out_path)
     doc.close()
     return PoisonSample(out_path, "tiny_font", payload, is_poisoned=True)
@@ -123,7 +154,7 @@ def make_invisible_render_mode(out_path: Path, payload: str = DEFAULT_PAYLOAD) -
     """PDF text render mode 3 — painted as nothing, still extracted as text."""
     doc, page = _new_doc()
     y = _write_body(page)
-    page.insert_text((72, y + 20), payload, fontsize=9, fontname="helv", render_mode=3)
+    _insert_payload(page, payload, y + 20, render_mode=3)
     doc.save(out_path)
     doc.close()
     return PoisonSample(out_path, "invisible_render_mode", payload, is_poisoned=True)
@@ -133,7 +164,7 @@ def make_offpage(out_path: Path, payload: str = DEFAULT_PAYLOAD) -> PoisonSample
     """Positioned outside the visible page area."""
     doc, page = _new_doc()
     _write_body(page)
-    page.insert_text((72, page.rect.height + 200), payload, fontsize=9, fontname="helv")
+    _insert_payload(page, payload, page.rect.height + 200)
     doc.save(out_path)
     doc.close()
     return PoisonSample(out_path, "offpage", payload, is_poisoned=True)
@@ -157,7 +188,7 @@ def make_visible_injection(out_path: Path, payload: str = DEFAULT_PAYLOAD) -> Po
     """
     doc, page = _new_doc()
     y = _write_body(page)
-    page.insert_text((72, y + 20), payload, fontsize=10, fontname="helv", color=(0, 0, 0))
+    _insert_payload(page, payload, y + 20, fontsize=10, color=(0, 0, 0))
     doc.save(out_path)
     doc.close()
     return PoisonSample(out_path, "visible_injection", payload, is_poisoned=True)
