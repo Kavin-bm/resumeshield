@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* Dark shell, bright document. The rendered resume should read like a
+   real sheet of paper on a desk — that contrast is what makes the
+   "hidden text" reveal land. */
+:root {
+  --bg: #0a0c10;
+  --surface: #12151c;
+  --surface-2: #191d26;
+  --border: #242935;
+  --border-bright: #333a4a;
+
+  --text: #e8ecf2;
+  --text-muted: #8b95a7;
+  --text-dim: #5c6577;
+
+  --accent: #4da3ff;
+  --danger: #ff5c5c;
+  --danger-dim: #3d1f24;
+  --warning: #ffb340;
+  --ok: #3ddc97;
+
+  --paper: #ffffff;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-bright: var(--border-bright);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-dim: var(--text-dim);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-danger-dim: var(--danger-dim);
+  --color-warning: var(--warning);
+  --color-ok: var(--ok);
+  --color-paper: var(--paper);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-mono-face);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Mono is reserved for extracted text — it signals "this is what the
+   machine read", not decoration. */
+.machine-text {
+  font-family: var(--font-mono-face), ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+
+@keyframes reveal-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+.highlight-box {
+  animation: reveal-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-up {
+  animation: fade-up 0.35s ease-out both;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
