@@ -250,6 +250,107 @@ RESUMESHIELD_SCREENER_MODEL=ollama/llama3.2
 uv run pytest
 ```
 
+---
+
+## Python SDK & CLI
+
+ResumeShield can be embedded directly into your existing screening pipelines, ATS platforms, or agent workflows.
+
+### CLI
+
+```bash
+# Scan a resume with terminal report and color badges
+resumeshield scan path/to/resume.pdf
+
+# Output full JSON for programmatic pipelines
+resumeshield scan path/to/resume.pdf --json
+
+# Extract safe, sanitized text directly to stdout
+resumeshield sanitize path/to/resume.pdf > safe_resume.txt
+```
+
+### Python SDK (`resumeshield.Shield`)
+
+```python
+from resumeshield import Shield, Severity
+
+shield = Shield.default()
+
+# Scan document bytes, path, or file-like object
+result = shield.scan("path/to/resume.pdf")
+
+if not result.is_clean:
+    print(f"Rejected: {result.verdict} (Risk score: {result.risk_score})")
+    for finding in result.findings:
+        print(f" - [{finding.severity}] {finding.detector}: {finding.evidence}")
+else:
+    # Safe to feed your downstream LLM screener
+    screener.evaluate(result.sanitized_text)
+```
+
+### Incorporating Your Own Rules & Models (Extensibility)
+
+You can easily register proprietary rules, custom regex patterns, or ML classifiers without modifying the core library:
+
+```python
+# 1. Add custom regex patterns in one line
+shield.add_pattern(
+    pattern=r"\b(bypass_hr_screening|override_eval)\b",
+    severity=Severity.CRITICAL,
+    message="Attempt to bypass corporate screening policy.",
+)
+
+# 2. Add custom Python function rules
+@shield.add_rule(name="custom_leak_check")
+def check_for_leaks(ctx):
+    if "INTERNAL_CONFIDENTIAL" in ctx.concealed_text:
+        return [Finding(
+            detector="custom_leak_check",
+            category=Category.SEMANTIC_INJECTION,
+            severity=Severity.HIGH,
+            message="Internal confidential marker found in concealed text.",
+        )]
+    return []
+
+# 3. Attach custom ML / LLM semantic classifiers
+shield.add_model_classifier(
+    name="my_deberta_classifier",
+    classifier=my_classifier_fn,  # returns list of (label, score)
+    threshold=0.85,
+)
+```
+
+### Framework Integrations
+
+#### FastAPI Guardrail
+
+```python
+from fastapi import FastAPI, Depends
+from resumeshield.integrations.fastapi import ResumeShieldGuard
+from resumeshield.models import ScanResult
+
+app = FastAPI()
+guard = ResumeShieldGuard(auto_reject=True, max_risk_score=60)
+
+@app.post("/apply")
+async def apply(scan: ScanResult = Depends(guard)):
+    # Automatically rejects malicious uploads with HTTP 400
+    # Safe to use scan.sanitized_text here
+    return {"status": "accepted", "text": scan.sanitized_text}
+```
+
+#### LangChain / RAG Document Loader
+
+```python
+from resumeshield.integrations.langchain import ResumeShieldPDFLoader
+
+loader = ResumeShieldPDFLoader("candidate_resume.pdf", reject_malicious=True)
+# Raises PromptInjectionDetectedError if malicious; returns clean Document otherwise
+docs = loader.load()
+```
+
+---
+
 ## API
 
 | Endpoint | Purpose |

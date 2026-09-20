@@ -18,15 +18,11 @@ from pathlib import Path
 
 import pymupdf
 
-from resumeshield.detectors import (
-    extractor_divergence,
-    injection_patterns,
-    normalization,
-    pdf_metadata,
-    pdf_structure,
-    unicode_tricks,
-)
 from resumeshield import differential
+from resumeshield.config import ShieldConfig
+from resumeshield.context import DocumentContext
+from resumeshield.detectors import unicode_tricks
+from resumeshield.detectors.base import Stage
 from resumeshield.models import (
     SEVERITY_WEIGHT,
     Category,
@@ -35,6 +31,7 @@ from resumeshield.models import (
     Severity,
     Verdict,
 )
+from resumeshield.registry import DetectorRegistry, default_registry
 from resumeshield.render import render_pages
 
 MALICIOUS_SCORE = 60
@@ -92,7 +89,11 @@ def _score(findings: list[Finding]) -> int:
     return min(100, worst + 8 * (independent_categories - 1))
 
 
-def _decide(findings: list[Finding]) -> tuple[Verdict, int]:
+def _decide(
+    findings: list[Finding],
+    malicious_score: int = MALICIOUS_SCORE,
+    suspicious_score: int = SUSPICIOUS_SCORE,
+) -> tuple[Verdict, int]:
     score = _score(findings)
 
     concealed = any(
@@ -104,10 +105,10 @@ def _decide(findings: list[Finding]) -> tuple[Verdict, int]:
 
     # Unambiguous injection phrasing is an attack whether or not it was
     # hidden — a resume has no legitimate reason to address its reader.
-    if has_critical or (concealed and instructing) or score >= MALICIOUS_SCORE:
-        return Verdict.MALICIOUS, max(score, MALICIOUS_SCORE)
-    if score >= SUSPICIOUS_SCORE or concealed or instructing:
-        return Verdict.SUSPICIOUS, max(score, SUSPICIOUS_SCORE)
+    if has_critical or (concealed and instructing) or score >= malicious_score:
+        return Verdict.MALICIOUS, max(score, malicious_score)
+    if score >= suspicious_score or concealed or instructing:
+        return Verdict.SUSPICIOUS, max(score, suspicious_score)
     return Verdict.CLEAN, score
 
 
@@ -136,7 +137,14 @@ def scan_pdf(
     filename: str = "resume.pdf",
     render: bool = False,
     differential_screening: bool = False,
+    config: ShieldConfig | None = None,
+    registry: DetectorRegistry | None = None,
 ) -> ScanResult:
+    cfg = config or ShieldConfig.from_env()
+    # If a specific registry was passed, use it; otherwise clone default and apply config
+    active_reg = registry if registry is not None else default_registry.clone()
+    active_reg.apply_config(cfg)
+
     result = ScanResult(filename=filename)
 
     try:
@@ -148,55 +156,54 @@ def scan_pdf(
 
     try:
         result.pages = doc.page_count
+        ctx = DocumentContext(data=data, filename=filename, doc=doc)
 
-        structure_findings, visible_text, hidden_text = pdf_structure.analyze(doc)
-        metadata_findings, metadata_text = pdf_metadata.analyze(doc)
+        # Execute detectors across ordered stages
+        ordered_stages = [
+            Stage.STRUCTURE,
+            Stage.METADATA,
+            Stage.DIVERGENCE,
+            Stage.ENCODING,
+            Stage.INSTRUCTION,
+            Stage.CUSTOM,
+            Stage.POST,
+        ]
 
-        # Parser-differential analysis works on the raw bytes, since the
-        # whole point is to compare independent PDF implementations.
-        divergence_findings, extractor_texts = extractor_divergence.analyze(data)
+        detectors = active_reg.list_detectors()
+        for stage in ordered_stages:
+            for detector in detectors:
+                if detector.stage == stage and detector.enabled:
+                    findings = detector.analyze(ctx)
+                    ctx.add_findings(findings)
 
-        findings = [*structure_findings, *metadata_findings, *divergence_findings]
-
-        # Text only some extractors can see counts as concealed for the
-        # purposes of instruction analysis below.
-        divergent_text = " ".join(f.evidence for f in divergence_findings)
-        concealed_text = "\n".join(filter(None, [hidden_text, metadata_text, divergent_text]))
-
-        # Character- and encoding-level checks over everything extracted.
-        for text, source in ((visible_text, "visible"), (concealed_text, "hidden")):
-            findings += unicode_tricks.analyze(text, source=source)
-            findings += normalization.analyze(text, source=source)
-
-        # Instruction checks, tagged by where the text was found so the
-        # aggregation step can escalate concealed instructions.
-        findings += injection_patterns.analyze(visible_text, source="visible")
-        findings += injection_patterns.analyze(hidden_text, source="hidden")
-        findings += injection_patterns.analyze(metadata_text, source="metadata")
-        findings += injection_patterns.analyze(divergent_text, source="hidden")
-
-        findings = _escalate_hidden_injections(findings)
+        findings = _escalate_hidden_injections(ctx.findings)
         findings = _dedupe(findings)
+
         result.extractor_texts = {
-            name: " ".join(text.split())[:4000] for name, text in extractor_texts.items()
+            name: " ".join(text.split())[:4000] for name, text in ctx.extractor_texts.items()
         }
 
         result.findings = findings
-        result.visible_text = " ".join(visible_text.split())
-        result.hidden_text = " ".join(concealed_text.split())
-        result.sanitized_text = _sanitize(visible_text, findings)
-        result.verdict, result.risk_score = _decide(findings)
+        result.visible_text = " ".join(ctx.visible_text.split())
+        result.hidden_text = " ".join(ctx.concealed_text.split())
+        result.sanitized_text = _sanitize(ctx.visible_text, findings)
+        result.verdict, result.risk_score = _decide(
+            findings,
+            malicious_score=cfg.malicious_score,
+            suspicious_score=cfg.suspicious_score,
+        )
 
         if render:
             result.rendered_pages = [p.to_dict() for p in render_pages(doc)]
 
-        if differential_screening:
-            raw_text = max(extractor_texts.values(), key=len, default="")
+        use_diff = differential_screening or cfg.enable_differential
+        if use_diff:
+            raw_text = max(ctx.extractor_texts.values(), key=len, default="")
             outcome = differential.run(raw_text, result.sanitized_text)
             result.differential = outcome.to_dict()
             if outcome.manipulated:
                 result.verdict = Verdict.MALICIOUS
-                result.risk_score = max(result.risk_score, MALICIOUS_SCORE)
+                result.risk_score = max(result.risk_score, cfg.malicious_score)
                 result.findings.append(
                     Finding(
                         detector="differential.screening",
@@ -216,6 +223,19 @@ def scan_pdf(
     return result
 
 
-def scan_file(path: str | Path) -> ScanResult:
+def scan_file(
+    path: str | Path,
+    render: bool = False,
+    differential_screening: bool = False,
+    config: ShieldConfig | None = None,
+    registry: DetectorRegistry | None = None,
+) -> ScanResult:
     path = Path(path)
-    return scan_pdf(path.read_bytes(), filename=path.name)
+    return scan_pdf(
+        path.read_bytes(),
+        filename=path.name,
+        render=render,
+        differential_screening=differential_screening,
+        config=config,
+        registry=registry,
+    )

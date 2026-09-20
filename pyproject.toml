@@ -14,3 +14,10 @@ dependencies = [
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.52.4",
 ]
+
+[project.scripts]
+resumeshield = "resumeshield.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
