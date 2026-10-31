@@ -104,19 +104,21 @@ def extract_all(data: bytes) -> dict[str, str]:
     return results
 
 
-def _reconstruct(shingles: set[tuple[str, ...]]) -> str:
+def _reconstruct(shingles: set[tuple[str, ...]], size: int = MIN_DIVERGENT_WORDS) -> str:
     """Turn divergent shingles back into readable evidence."""
     if not shingles:
         return ""
     ordered = sorted(shingles)
     words: list[str] = list(ordered[0])
     for shingle in ordered[1:]:
-        if shingle[-1] not in words[-MIN_DIVERGENT_WORDS:]:
+        if shingle[-1] not in words[-size:]:
             words.append(shingle[-1])
     return " ".join(words[:120])
 
 
-def analyze(data: bytes) -> tuple[list[Finding], dict[str, str]]:
+def analyze(
+    data: bytes, *, min_divergent_words: int = MIN_DIVERGENT_WORDS
+) -> tuple[list[Finding], dict[str, str]]:
     """Compare what each extractor sees.
 
     Returns (findings, per-extractor text) — the text map is kept so the
@@ -125,7 +127,9 @@ def analyze(data: bytes) -> tuple[list[Finding], dict[str, str]]:
     texts = extract_all(data)
     real = {name: text for name, text in texts.items() if not name.startswith("__error__")}
 
-    shingle_map = {name: _shingles(_tokens(text)) for name, text in real.items()}
+    shingle_map = {
+        name: _shingles(_tokens(text), size=min_divergent_words) for name, text in real.items()
+    }
     populated = {name: s for name, s in shingle_map.items() if s}
     if len(populated) < 2:
         return [], real
@@ -141,8 +145,8 @@ def analyze(data: bytes) -> tuple[list[Finding], dict[str, str]]:
         unique = shingles & divergent
         if len(unique) < 1:
             continue
-        evidence = _reconstruct(unique)
-        if len(_tokens(evidence)) < MIN_DIVERGENT_WORDS:
+        evidence = _reconstruct(unique, size=min_divergent_words)
+        if len(_tokens(evidence)) < min_divergent_words:
             continue
 
         missing_from = sorted(n for n in populated if not (shingles & divergent) <= shingle_map[n])

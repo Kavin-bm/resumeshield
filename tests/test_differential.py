@@ -6,7 +6,6 @@ decides whether the layer runs at all.
 from __future__ import annotations
 
 import pytest
-
 from resumeshield import differential
 
 PROVIDER_VARS = [env for env, _ in differential.PROVIDERS]
@@ -70,7 +69,7 @@ def test_identical_texts_skip_the_call(monkeypatch):
 
 
 def test_verdict_parsing_tolerates_surrounding_prose():
-    score, rec, reason = differential._parse_screener_reply(
+    score, rec, _reason = differential._parse_screener_reply(
         'Sure! {"score": 82, "recommendation": "advance", "reason": "strong"}'
     )
     assert score == 82

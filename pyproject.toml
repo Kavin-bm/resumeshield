@@ -1,23 +1,52 @@
 [project]
 name = "resumeshield"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Detect prompt-injection payloads hidden in resume PDFs."
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.14"
+classifiers = [
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+]
 dependencies = [
     "fastapi>=0.141.1",
     "litellm>=1.98.0",
     "pdfminer-six>=20260107",
     "pymupdf>=1.28.2",
     "pypdf>=6.16.1",
-    "pytest>=9.1.1",
-    "python-docx>=1.2.0",
     "python-multipart>=0.0.32",
+    "pyyaml>=6",
     "uvicorn[standard]>=0.52.4",
 ]
 
 [project.scripts]
 resumeshield = "resumeshield.cli:main"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.9",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+src = ["resumeshield", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    # FastAPI's File() and Depends() belong in parameter defaults.
+    "B008",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]

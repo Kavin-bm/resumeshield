@@ -63,7 +63,10 @@ def find_mixed_script_words(text: str) -> list[tuple[str, set[str]]]:
 
 def _visible_delta(raw: str, normalized: str) -> int:
     """How many characters normalization actually changed."""
-    return sum(1 for a, b in zip(raw, normalized) if a != b) + abs(len(raw) - len(normalized))
+    # Lengths differ when normalization inserts or drops characters, so strict zip would throw.
+    return sum(1 for a, b in zip(raw, normalized, strict=False) if a != b) + abs(
+        len(raw) - len(normalized)
+    )
 
 
 def analyze(text: str, source: str = "visible") -> list[Finding]:

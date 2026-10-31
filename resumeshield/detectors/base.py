@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Callable
 
 from resumeshield.context import DocumentContext
 from resumeshield.models import Category, Finding, Severity

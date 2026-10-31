@@ -127,7 +127,12 @@ def _page_fills(page: pymupdf.Page) -> list[tuple[tuple, tuple[float, float, flo
 
 
 def classify_span(
-    span: Span, page_rect: pymupdf.Rect, fills: list
+    span: Span,
+    page_rect: pymupdf.Rect,
+    fills: list,
+    *,
+    tiny_font_pt: float = TINY_FONT_PT,
+    min_luminance_gap: float = MIN_LUMINANCE_GAP,
 ) -> tuple[str, str] | None:
     """Return (reason_code, human_message) if the span is hidden, else None."""
     if span.is_blank:
@@ -139,7 +144,7 @@ def classify_span(
             f"Text is painted invisibly (alpha={span.alpha}) but remains machine-readable.",
         )
 
-    if span.size < TINY_FONT_PT:
+    if span.size < tiny_font_pt:
         return (
             "tiny_font",
             f"Text is set at {span.size:.2f}pt — far below readable size.",
@@ -154,7 +159,7 @@ def classify_span(
 
     text_lum = _relative_luminance(span.color)
     bg_lum = _background_luminance(span, fills)
-    if abs(text_lum - bg_lum) < MIN_LUMINANCE_GAP:
+    if abs(text_lum - bg_lum) < min_luminance_gap:
         return (
             "low_contrast",
             "Text colour is indistinguishable from the background behind it.",
@@ -171,7 +176,12 @@ REASON_SEVERITY = {
 }
 
 
-def analyze(doc: pymupdf.Document) -> tuple[list[Finding], str, str]:
+def analyze(
+    doc: pymupdf.Document,
+    *,
+    tiny_font_pt: float = TINY_FONT_PT,
+    min_luminance_gap: float = MIN_LUMINANCE_GAP,
+) -> tuple[list[Finding], str, str]:
     """Analyze a PDF's structure.
 
     Returns (findings, visible_text, hidden_text). The two text streams are
@@ -188,7 +198,13 @@ def analyze(doc: pymupdf.Document) -> tuple[list[Finding], str, str]:
     for span in load_spans(doc):
         if span.is_blank:
             continue
-        verdict = classify_span(span, rects_by_page[span.page], fills_by_page[span.page])
+        verdict = classify_span(
+            span,
+            rects_by_page[span.page],
+            fills_by_page[span.page],
+            tiny_font_pt=tiny_font_pt,
+            min_luminance_gap=min_luminance_gap,
+        )
         if verdict is None:
             visible_parts.append(span.text)
             continue

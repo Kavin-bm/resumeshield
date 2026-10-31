@@ -1,8 +1,9 @@
 """Main SDK facade: Shield class for embedding ResumeShield in any Python application."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import BinaryIO, Callable
+from typing import BinaryIO
 
 from resumeshield.config import ShieldConfig
 from resumeshield.context import DocumentContext
@@ -16,6 +17,8 @@ from resumeshield.detectors.base import (
 from resumeshield.models import Category, Finding, ScanResult, Severity
 from resumeshield.registry import DetectorRegistry, default_registry
 from resumeshield.scanner import scan_pdf
+
+RuleFunc = Callable[[DocumentContext], list[Finding]]
 
 
 class Shield:
@@ -107,12 +110,34 @@ class Shield:
     def add_rule(
         self,
         name: str,
-        func: Callable[[DocumentContext], list[Finding]],
+        func: RuleFunc | None = None,
         category: Category = Category.SEMANTIC_INJECTION,
         stage: Stage = Stage.CUSTOM,
-    ) -> FunctionalDetector:
-        """Add an arbitrary Python function rule."""
-        return self.registry.add_custom_rule(name=name, func=func, category=category, stage=stage)
+    ) -> FunctionalDetector | Callable[[RuleFunc], RuleFunc]:
+        """Register a Python rule, either by passing it or as a decorator.
+
+        Both of these register the same way:
+
+            shield.add_rule("custom_leak_check", check_for_leaks)
+
+            @shield.add_rule("custom_leak_check")
+            def check_for_leaks(ctx):
+                ...
+        """
+
+        def register(fn: RuleFunc) -> FunctionalDetector:
+            return self.registry.add_custom_rule(
+                name=name, func=fn, category=category, stage=stage
+            )
+
+        if func is not None:
+            return register(func)
+
+        def decorator(fn: RuleFunc) -> RuleFunc:
+            register(fn)
+            return fn
+
+        return decorator
 
     def add_model_classifier(
         self,

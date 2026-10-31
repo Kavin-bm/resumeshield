@@ -1,4 +1,11 @@
 """ResumeShield: Detects and neutralizes prompt-injection payloads in resumes."""
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("resumeshield")
+except PackageNotFoundError:
+    __version__ = "0.2.0"
+
 from resumeshield.config import ShieldConfig
 from resumeshield.context import DocumentContext
 from resumeshield.detectors.base import (

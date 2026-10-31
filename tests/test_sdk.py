@@ -1,12 +1,8 @@
 """Tests for the high-level Shield SDK facade."""
 from __future__ import annotations
 
-import io
-from pathlib import Path
-
 import pytest
-
-from resumeshield import Shield, ShieldConfig
+from resumeshield import Shield
 from resumeshield.models import Verdict
 
 

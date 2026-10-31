@@ -1,9 +1,10 @@
 """LangChain document loader integration for safely ingesting resumes."""
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from resumeshield.models import ScanResult, Verdict
 from resumeshield.shield import Shield

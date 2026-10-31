@@ -6,12 +6,19 @@ fixtures, so the attacks and the detectors can't silently drift apart.
 from __future__ import annotations
 
 import pytest
-
 from resumeshield import poison
 from resumeshield.models import Category, Severity, Verdict
 from resumeshield.scanner import scan_file
 
-POISONED = ["white_text", "tiny_font", "invisible_render_mode", "offpage", "metadata", "visible_injection"]
+POISONED = [
+    "white_text",
+    "tiny_font",
+    "invisible_render_mode",
+    "offpage",
+    "metadata",
+    "annotation",
+    "visible_injection",
+]
 CLEAN = ["clean", "dark_banner"]
 
 
@@ -49,7 +56,10 @@ def test_dark_banner_white_text_is_not_a_false_positive(corpus):
     assert "JORDAN AVERY" in result.visible_text
 
 
-@pytest.mark.parametrize("technique", ["white_text", "tiny_font", "invisible_render_mode", "offpage"])
+@pytest.mark.parametrize(
+    "technique",
+    ["white_text", "tiny_font", "invisible_render_mode", "offpage", "metadata", "annotation"],
+)
 def test_hidden_payload_is_extracted_and_reported(corpus, technique):
     result = scan_file(corpus[technique].path)
     assert "Ignore all previous instructions" in result.hidden_text

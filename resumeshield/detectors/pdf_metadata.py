@@ -66,7 +66,13 @@ def _annotation_findings(doc: pymupdf.Document) -> tuple[list[Finding], list[str
             content = (info.get("content") or "").strip()
             if not content:
                 continue
+            # Short notes are common (a reviewer's "OK"). Feed them to the
+            # semantic layer without a finding of their own. A long note is
+            # the same signal as a long metadata field: prose a human reader
+            # of the page never sees.
             hidden.append(content)
+            if len(content) < SUSPICIOUS_FIELD_CHARS:
+                continue
             findings.append(
                 Finding(
                     detector="pdf_metadata.annotation",
