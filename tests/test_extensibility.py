@@ -4,16 +4,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from resumeshield.config import ShieldConfig
 from resumeshield.context import DocumentContext
 from resumeshield.detectors.base import (
-    BaseDetector,
     FunctionalDetector,
     PatternDetector,
     SemanticModelDetector,
-    Stage,
 )
 from resumeshield.models import Category, Finding, Severity, Verdict
 from resumeshield.registry import DetectorRegistry
@@ -162,3 +158,110 @@ def test_shield_custom_pattern_integration(tmp_path: Path):
     assert res_flagged.verdict == Verdict.MALICIOUS
     assert any("Northwind Systems" in f.evidence for f in res_flagged.findings)
     assert "[REDACTED: suspected prompt injection]" in res_flagged.sanitized_text
+
+
+def _three_point_pdf(path: Path) -> None:
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text(
+        (72, 72),
+        "Three point line of ordinary resume text",
+        fontsize=3,
+        fontname="helv",
+        color=(0, 0, 0),
+    )
+    doc.save(path)
+    doc.close()
+
+
+def test_tiny_font_threshold_is_applied(tmp_path: Path):
+    path = tmp_path / "three.pdf"
+    _three_point_pdf(path)
+
+    flagged = Shield(config=ShieldConfig(tiny_font_pt=4.0)).scan(path)
+    spared = Shield(config=ShieldConfig(tiny_font_pt=2.0)).scan(path)
+
+    assert any(f.detector == "pdf_structure.tiny_font" for f in flagged.findings)
+    assert flagged.verdict is not Verdict.CLEAN
+    assert spared.findings == []
+    assert spared.verdict is Verdict.CLEAN
+
+
+def test_tiny_font_environment_variable_reaches_the_scanner(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("RESUMESHIELD_TINY_FONT_PT", "2")
+    path = tmp_path / "three.pdf"
+    _three_point_pdf(path)
+    result = Shield(config=ShieldConfig.from_env()).scan(path)
+    assert result.verdict is Verdict.CLEAN
+
+
+def test_luminance_gap_can_treat_white_text_as_visible(tmp_path: Path):
+    from resumeshield import poison
+
+    sample = poison.make_white_text(tmp_path / "white.pdf")
+    result = Shield(config=ShieldConfig(min_luminance_gap=0.0)).scan(sample.path)
+    assert not any("low_contrast" in f.detector for f in result.findings)
+    assert "Ignore all previous instructions" in result.visible_text
+
+
+def test_divergent_word_threshold_can_silence_parser_noise(tmp_path: Path):
+    from resumeshield import poison
+
+    sample = poison.make_offpage(tmp_path / "off.pdf")
+    result = Shield(config=ShieldConfig(min_divergent_words=500)).scan(sample.path)
+    assert any(f.detector == "pdf_structure.offpage" for f in result.findings)
+    assert not any(f.detector.startswith("extractor_divergence.") for f in result.findings)
+
+
+def test_yaml_config_file(tmp_path: Path):
+    path = tmp_path / "shield.yaml"
+    path.write_text("malicious_score: 55\nsuspicious_score: 12\n", encoding="utf-8")
+    cfg = ShieldConfig.from_file(path)
+    assert cfg.malicious_score == 55
+    assert cfg.suspicious_score == 12
+
+
+def test_add_rule_decorator_and_direct_call(tmp_path: Path):
+    from resumeshield import poison
+    from resumeshield.context import DocumentContext
+    from resumeshield.models import Category, Finding, Severity
+
+    sample = poison.make_clean(tmp_path / "clean.pdf")
+    shield = Shield.default()
+
+    @shield.add_rule("custom_leak_check")
+    def check_for_leaks(ctx: DocumentContext) -> list[Finding]:
+        if "INTERNAL_CONFIDENTIAL" in ctx.concealed_text:
+            return [
+                Finding(
+                    detector="custom_leak_check",
+                    category=Category.SEMANTIC_INJECTION,
+                    severity=Severity.HIGH,
+                    message="Internal confidential marker found in concealed text.",
+                )
+            ]
+        return []
+
+    assert check_for_leaks(DocumentContext(data=b"")) == []
+
+    def flag_name(ctx: DocumentContext) -> list[Finding]:
+        if "JORDAN" not in ctx.visible_text:
+            return []
+        return [
+            Finding(
+                detector="flag_name",
+                category=Category.SEMANTIC_INJECTION,
+                severity=Severity.CRITICAL,
+                message="Name was flagged by a custom rule.",
+                evidence="JORDAN",
+            )
+        ]
+
+    direct = shield.add_rule("flag_name", flag_name)
+    assert direct.name == "flag_name"
+
+    result = shield.scan(sample.path)
+    assert result.verdict is Verdict.MALICIOUS
+    assert any(f.detector == "flag_name" for f in result.findings)

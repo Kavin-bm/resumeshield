@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from resumeshield.detectors import (
     extractor_divergence,
@@ -25,10 +26,18 @@ class BuiltinStructureDetector(BaseDetector):
     category = Category.HIDDEN_TEXT
     stage = Stage.STRUCTURE
 
+    def __init__(self) -> None:
+        self.tiny_font_pt = pdf_structure.TINY_FONT_PT
+        self.min_luminance_gap = pdf_structure.MIN_LUMINANCE_GAP
+
     def analyze(self, ctx: DocumentContext) -> list[Finding]:
         if ctx.doc is None:
             return []
-        findings, visible, hidden = pdf_structure.analyze(ctx.doc)
+        findings, visible, hidden = pdf_structure.analyze(
+            ctx.doc,
+            tiny_font_pt=self.tiny_font_pt,
+            min_luminance_gap=self.min_luminance_gap,
+        )
         ctx.visible_text = visible
         ctx.hidden_text = hidden
         return findings
@@ -52,8 +61,13 @@ class BuiltinDivergenceDetector(BaseDetector):
     category = Category.HIDDEN_TEXT
     stage = Stage.DIVERGENCE
 
+    def __init__(self) -> None:
+        self.min_divergent_words = extractor_divergence.MIN_DIVERGENT_WORDS
+
     def analyze(self, ctx: DocumentContext) -> list[Finding]:
-        findings, extractor_texts = extractor_divergence.analyze(ctx.data)
+        findings, extractor_texts = extractor_divergence.analyze(
+            ctx.data, min_divergent_words=self.min_divergent_words
+        )
         ctx.extractor_texts = extractor_texts
         ctx.divergent_text = " ".join(f.evidence for f in findings)
         return findings
@@ -163,10 +177,19 @@ class DetectorRegistry:
         return detector
 
     def apply_config(self, config: ShieldConfig) -> None:
-        """Apply disabled detectors and custom patterns from configuration."""
+        """Apply disabled detectors, thresholds, and custom patterns."""
         for name in config.disabled_detectors:
             if name in self._detectors:
                 self._detectors[name].enabled = False
+
+        structure = self.get("pdf_structure")
+        if structure is not None and hasattr(structure, "tiny_font_pt"):
+            structure.tiny_font_pt = config.tiny_font_pt
+            structure.min_luminance_gap = config.min_luminance_gap
+
+        divergence = self.get("extractor_divergence")
+        if divergence is not None and hasattr(divergence, "min_divergent_words"):
+            divergence.min_divergent_words = config.min_divergent_words
 
         if config.custom_patterns:
             rules = []
@@ -178,8 +201,8 @@ class DetectorRegistry:
     def clone(self) -> DetectorRegistry:
         """Create an independent copy of this registry."""
         registry = DetectorRegistry(load_defaults=False)
-        for name, d in self._detectors.items():
-            registry.register(copy.copy(d))
+        for detector in self._detectors.values():
+            registry.register(copy.copy(detector))
         return registry
 
 

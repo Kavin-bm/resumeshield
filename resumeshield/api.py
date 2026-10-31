@@ -20,7 +20,7 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from resumeshield import poison
+from resumeshield import __version__, poison
 from resumeshield.scanner import scan_pdf
 
 # Human-readable labels for the built-in demo documents. Most visitors
@@ -28,12 +28,16 @@ from resumeshield.scanner import scan_pdf
 # end the demo before it starts.
 SAMPLE_LABELS = {
     "clean": ("Ordinary resume", "A normal resume with nothing hidden in it."),
-    "dark_banner": ("Designed resume", "White header text on a dark banner — legitimate design that naive contrast checks flag."),
+    "dark_banner": (
+        "Designed resume",
+        "White header text on a dark banner — legitimate design that naive contrast checks flag.",
+    ),
     "white_text": ("White-on-white text", "Payload written in white on a white page."),
     "tiny_font": ("Sub-point font", "Payload set at 1pt — present, but unreadable."),
     "invisible_render_mode": ("Invisible render mode", "Painted as nothing, still extracted as text."),
     "offpage": ("Off-page payload", "Positioned past the page edge; some parsers still read it."),
     "metadata": ("Metadata payload", "Hidden in document properties rather than the page."),
+    "annotation": ("Annotation payload", "Hidden in a sticky note, which many extractors still read."),
     "visible_injection": ("Unhidden injection", "Not concealed at all — relies on nobody reading it."),
 }
 
@@ -44,7 +48,7 @@ MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 app = FastAPI(
     title="ResumeShield API",
     description="Detects prompt-injection payloads hidden in resume documents.",
-    version="0.1.0",
+    version=__version__,
 )
 
 app.add_middleware(
@@ -83,7 +87,7 @@ def list_samples() -> list[dict]:
             "id": technique,
             "label": label,
             "description": description,
-            "poisoned": technique not in ("clean", "dark_banner"),
+            "poisoned": technique not in poison.CLEAN_TECHNIQUES,
         }
         for technique, (label, description) in SAMPLE_LABELS.items()
     ]

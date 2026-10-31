@@ -88,6 +88,9 @@ Proof, from the bundled `offpage` sample:
 
 A reviewer on one library sees a clean page while the screener on another
 ingests the injection. Neither tool is broken. That gap *is* the attack.
+The structure layer also reads past the page edge, so the same file is
+caught there too. Those two observations share one category, so the score
+counts them once.
 
 ### 3 · Encoding — *does this text survive normalization?*
 Rather than enumerate every lookalike character, this applies the
@@ -198,14 +201,21 @@ Current corpus results:
 | White-on-white text | malicious | 78 | structure + phrasing |
 | Sub-point font | malicious | 78 | structure + phrasing |
 | Invisible render mode | malicious | 78 | structure + phrasing |
-| Off-page payload | malicious | 78 | **parser divergence** + phrasing |
+| Off-page payload | malicious | 78 | structure + parser divergence + phrasing |
 | Metadata payload | malicious | 78 | metadata + phrasing |
+| Annotation note | malicious | 78 | metadata + phrasing |
 | Unhidden injection | malicious | 70 | phrasing only |
 
-Note the last row scoring *lower*. It should — nothing was concealed.
+Note the unhidden row scoring *lower*. It should — nothing was concealed.
+Every other poisoned sample scores 78 because concealment and an
+instruction are two categories: the worst finding is critical (70) and
+one extra category adds 8. The table is what `scan_file` returns on
+`poison.generate_corpus` today. `tests/test_corpus_contract.py` fails if
+a verdict, score, or detector moves, which is how this section stays
+honest.
 
-**69 tests**, all offline, no API key required. The suite asserts layers
-stay in their lanes: white-on-white must produce **zero** parser
+The suite is fully offline and needs no API key. It also checks that
+layers stay in their lanes: white-on-white must produce **zero** parser
 divergence, because every extractor reads it identically. It's a
 rendering trick, not a parser differential, and a layer firing outside
 its lane is a bug even when the final verdict is right.
@@ -247,7 +257,9 @@ RESUMESHIELD_SCREENER_MODEL=ollama/llama3.2
 ```
 
 ```bash
+uv run ruff check resumeshield tests
 uv run pytest
+uv run resumeshield --help
 ```
 
 ---
@@ -259,15 +271,24 @@ ResumeShield can be embedded directly into your existing screening pipelines, AT
 ### CLI
 
 ```bash
-# Scan a resume with terminal report and color badges
+# Human-readable report. Color is used when stdout is a terminal.
+# Set NO_COLOR=1 to force plain text, or FORCE_COLOR=1 to force color.
 resumeshield scan path/to/resume.pdf
 
-# Output full JSON for programmatic pipelines
+# JSON report on stdout. Same command works as `python -m resumeshield`.
 resumeshield scan path/to/resume.pdf --json
+
+# JSON report written to a file (no stdout)
+resumeshield scan path/to/resume.pdf --json -o report.json
 
 # Extract safe, sanitized text directly to stdout
 resumeshield sanitize path/to/resume.pdf > safe_resume.txt
 ```
+
+`scan` exits 0 when the verdict is clean, 1 when the file or config cannot
+be read, and 2 when the verdict is suspicious or malicious. A pipeline can
+treat any non-zero status as "do not feed this text to a model" and still
+read the JSON.
 
 ### Python SDK (`resumeshield.Shield`)
 
@@ -293,6 +314,10 @@ else:
 You can easily register proprietary rules, custom regex patterns, or ML classifiers without modifying the core library:
 
 ```python
+from resumeshield import Category, Finding, Severity, Shield
+
+shield = Shield.default()
+
 # 1. Add custom regex patterns in one line
 shield.add_pattern(
     pattern=r"\b(bypass_hr_screening|override_eval)\b",
@@ -300,8 +325,8 @@ shield.add_pattern(
     message="Attempt to bypass corporate screening policy.",
 )
 
-# 2. Add custom Python function rules
-@shield.add_rule(name="custom_leak_check")
+# 2. Add custom Python function rules (decorator or direct call)
+@shield.add_rule("custom_leak_check")
 def check_for_leaks(ctx):
     if "INTERNAL_CONFIDENTIAL" in ctx.concealed_text:
         return [Finding(
@@ -312,10 +337,14 @@ def check_for_leaks(ctx):
         )]
     return []
 
-# 3. Attach custom ML / LLM semantic classifiers
+# 3. Attach custom ML / LLM semantic classifiers.
+# The callable returns (label, score) pairs; scores under the threshold are ignored.
+def my_classifier_fn(text: str) -> list[tuple[str, float]]:
+    return [("injection", 0.91)] if "override the score" in text.lower() else []
+
 shield.add_model_classifier(
     name="my_deberta_classifier",
-    classifier=my_classifier_fn,  # returns list of (label, score)
+    classifier=my_classifier_fn,
     threshold=0.85,
 )
 ```
@@ -375,8 +404,22 @@ Python 3.14 · FastAPI · PyMuPDF · pypdf · pdfminer.six · LiteLLM
   against extracted text would generalize layer 1 completely — it would
   catch text behind images without knowing that trick exists. It needs a
   system Tesseract dependency; it's the next thing to build.
-- **The corpus is synthetic.** Numbers above describe generated samples
-  with known ground truth, not resumes found in the wild.
+- **Instruction patterns are a grammar list.** A paraphrase that avoids
+  that mood can pass the layer. Concealment, metadata, and parser
+  divergence do not depend on recognising a phrase. Differential
+  screening is the check for effect, and it stays off until a model is
+  configured.
+- **Short annotations are not findings by themselves.** A one-line
+  reviewer note is ordinary. A long note is reported like a long metadata
+  field (suspicious until an instruction is also present). A short note
+  that *is* an instruction is still flagged.
+- **The corpus is synthetic.** The table above is the measured result of
+  scanning those generated files. It is not a false-positive rate, and it
+  is not a claim about resumes found in the wild. The scan that produced
+  it used the default thresholds: text under 4pt, a luminance gap under
+  0.12, and parser disagreements of at least 8 words. Those three settings
+  live on `ShieldConfig` and are applied during the scan.
+  `RESUMESHIELD_TINY_FONT_PT` overrides the font cutoff.
 - **Layer 5 costs money and latency.** It's opt-in for that reason —
   though pointing it at a local Ollama model makes it free.
 

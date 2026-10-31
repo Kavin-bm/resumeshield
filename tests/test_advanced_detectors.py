@@ -7,7 +7,6 @@ specific sample that happens to trip it.
 from __future__ import annotations
 
 import pytest
-
 from resumeshield import poison
 from resumeshield.detectors import extractor_divergence, normalization
 from resumeshield.models import Category
@@ -98,14 +97,14 @@ def test_accented_names_are_not_flagged():
 def test_find_mixed_script_words_reports_the_scripts():
     hits = normalization.find_mixed_script_words(f"p{CYRILLIC_A}ssword")
     assert hits
-    word, scripts = hits[0]
+    _word, scripts = hits[0]
     assert "latin" in scripts and "cyrillic" in scripts
 
 
 def test_normalize_for_screening_strips_format_chars():
-    text = "Clean​text‮here"
+    text = "Clean\u200btext\u202ehere"
     out = normalization.normalize_for_screening(text)
-    assert "​" not in out and "‮" not in out
+    assert "\u200b" not in out and "\u202e" not in out
     assert "Clean" in out and "text" in out
 
 

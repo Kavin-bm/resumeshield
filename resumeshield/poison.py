@@ -194,6 +194,24 @@ def make_visible_injection(out_path: Path, payload: str = DEFAULT_PAYLOAD) -> Po
     return PoisonSample(out_path, "visible_injection", payload, is_poisoned=True)
 
 
+def make_annotation(out_path: Path, payload: str = DEFAULT_PAYLOAD) -> PoisonSample:
+    """Payload in a sticky-note annotation, absent from the page content stream.
+
+    Many extractors skip annotations; others (and this scanner's metadata
+    layer) read them. The note is not painted on the page.
+    """
+    doc, page = _new_doc()
+    _write_body(page)
+    page.add_text_annot(pymupdf.Point(72, 120), payload)
+    doc.save(out_path)
+    doc.close()
+    return PoisonSample(out_path, "annotation", payload, is_poisoned=True)
+
+
+# Samples a detector must leave alone. Everything else in GENERATORS is an attack.
+CLEAN_TECHNIQUES = frozenset({"clean", "dark_banner"})
+
+
 GENERATORS = {
     "clean": make_clean,
     "dark_banner": make_dark_banner,
@@ -202,6 +220,7 @@ GENERATORS = {
     "invisible_render_mode": make_invisible_render_mode,
     "offpage": make_offpage,
     "metadata": make_metadata,
+    "annotation": make_annotation,
     "visible_injection": make_visible_injection,
 }
 
@@ -213,7 +232,7 @@ def generate_corpus(out_dir: Path, payload: str = DEFAULT_PAYLOAD) -> list[Poiso
     for name, generator in GENERATORS.items():
         path = out_dir / f"{name}.pdf"
         # The clean samples take no payload.
-        if name in ("clean", "dark_banner"):
+        if name in CLEAN_TECHNIQUES:
             samples.append(generator(path))
         else:
             samples.append(generator(path, payload))

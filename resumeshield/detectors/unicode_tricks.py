@@ -4,7 +4,10 @@ These attacks hide a payload inside otherwise ordinary-looking text, so no
 amount of layout analysis finds them — the text is the right size, the
 right colour, and on the page. Only the codepoints give it away.
 
-Operates on already-extracted text, so it applies equally to PDF and DOCX.
+Operates on already-extracted text, so the same checks apply whatever
+produced the string. Characters below are written as escapes on purpose:
+this file is about invisible codepoints, and the source should not contain
+any.
 """
 from __future__ import annotations
 
@@ -13,24 +16,24 @@ import unicodedata
 from resumeshield.models import Category, Finding, Severity
 
 ZERO_WIDTH = {
-    "​": "ZERO WIDTH SPACE",
-    "‌": "ZERO WIDTH NON-JOINER",
-    "‍": "ZERO WIDTH JOINER",
-    "⁠": "WORD JOINER",
-    "﻿": "ZERO WIDTH NO-BREAK SPACE",
-    "­": "SOFT HYPHEN",
+    "\u200b": "ZERO WIDTH SPACE",
+    "\u200c": "ZERO WIDTH NON-JOINER",
+    "\u200d": "ZERO WIDTH JOINER",
+    "\u2060": "WORD JOINER",
+    "\ufeff": "ZERO WIDTH NO-BREAK SPACE",
+    "\u00ad": "SOFT HYPHEN",
 }
 
 BIDI_CONTROLS = {
-    "‪": "LEFT-TO-RIGHT EMBEDDING",
-    "‫": "RIGHT-TO-LEFT EMBEDDING",
-    "‬": "POP DIRECTIONAL FORMATTING",
-    "‭": "LEFT-TO-RIGHT OVERRIDE",
-    "‮": "RIGHT-TO-LEFT OVERRIDE",
-    "⁦": "LEFT-TO-RIGHT ISOLATE",
-    "⁧": "RIGHT-TO-LEFT ISOLATE",
-    "⁨": "FIRST STRONG ISOLATE",
-    "⁩": "POP DIRECTIONAL ISOLATE",
+    "\u202a": "LEFT-TO-RIGHT EMBEDDING",
+    "\u202b": "RIGHT-TO-LEFT EMBEDDING",
+    "\u202c": "POP DIRECTIONAL FORMATTING",
+    "\u202d": "LEFT-TO-RIGHT OVERRIDE",
+    "\u202e": "RIGHT-TO-LEFT OVERRIDE",
+    "\u2066": "LEFT-TO-RIGHT ISOLATE",
+    "\u2067": "RIGHT-TO-LEFT ISOLATE",
+    "\u2068": "FIRST STRONG ISOLATE",
+    "\u2069": "POP DIRECTIONAL ISOLATE",
 }
 
 # A handful of zero-width characters can appear legitimately (ligature

@@ -1,20 +1,15 @@
 """Tests for framework integrations (FastAPI guardrail & LangChain loader)."""
 from __future__ import annotations
 
-import io
-from pathlib import Path
-
 import pytest
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-
 from resumeshield.integrations.fastapi import ResumeShieldGuard
 from resumeshield.integrations.langchain import (
     PromptInjectionDetectedError,
     ResumeShieldPDFLoader,
 )
 from resumeshield.models import ScanResult, Verdict
-from resumeshield.shield import Shield
 
 
 @pytest.fixture(scope="module")

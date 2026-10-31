@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import pytest
-
 from resumeshield.detectors import injection_patterns, unicode_tricks
 from resumeshield.detectors.pdf_structure import _relative_luminance
 from resumeshield.models import Severity
 
-ZWSP = "​"
-RLO = "‮"
+ZWSP = "\u200b"
+RLO = "\u202e"
 
 
 # ------------------------------------------------------------------- unicode
